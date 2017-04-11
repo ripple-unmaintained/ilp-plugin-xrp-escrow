@@ -6,6 +6,7 @@ const debug = require('debug')('ilp-plugin-xrp-escrow')
 const EventEmitter2 = require('eventemitter2')
 const BigNumber = require('bignumber.js')
 const assert = require('assert')
+const Translate = require('./translate')
 
 module.exports = class PluginXrpEscrow extends EventEmitter2 {
   constructor (opts) {
@@ -47,23 +48,12 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       accounts: [ this._address ]
     })
 
-    /*
-    const conn = this._api.connection
-    const oldemit = this._api.connection.emit
-    const newemit = function () {
-      console.log('\x1b[31mNOTIFY:\x1b[39m', arguments)
-      oldemit.call(conn, ...arguments)
-    }
-    */
-
-    // this._api.connection.emit = newemit
-
     this._api.connection.on('transaction', (ev) => {
-      //console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
+      console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
       if (ev.engine_result !== 'tesSUCCESS') return
       if (!ev.validated) return
 
-      this._handleTransaction(ev.transaction)
+      co(this._handleTransaction.bind(this, ev))
     })
 
     debug('connected')
@@ -123,7 +113,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       //condition: hexCondition.toUpperCase(),
       condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
       memos: [{
-        type: 'https://interledger.org/rel/xrpTransfer',
+        type: 'https://interledger.org/rel/xrpIlp',
         data: transfer.ilp
       }, {
         type: 'https://interledger.org/rel/xrpId',
@@ -135,13 +125,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('transaction id of', transfer.id, 'is', signed.id)
 
-    // cache information for fulfill time
-    this._transfers[transfer.id] = {
-      id: signed.id,
-      owner: this._account,
-      sequence: JSON.parse(tx.txJSON).Sequence
-    }
-
     yield this._api.submit(signed.signedTransaction)
     debug('submitted transaction')
   }
@@ -152,8 +135,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     const cached = this._transfers[transferId]
     const tx = yield this._api.prepareEscrowExecution(this._address, {
-      owner: cached.owner,
-      escrowSequence: cached.sequence,
+      owner: cached.Account,
+      escrowSequence: cached.Sequence,
       condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
       fulfillment: 'A0028000'
     })
@@ -200,75 +183,23 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('submitted message tx')
   }
 
-  _handleTransaction (transaction) {
+  * _handleTransaction (ev) {
     debug('got a notification of a transaction')
-
-    let direction = 'incoming'
-    if (transaction.Account === this._address) direction = 'outgoing'
-
-    const memos = {}
-    for (const m of (transaction.Memos || [])) {
-      const type = Buffer.from(m.Memo.MemoType, 'hex').toString('utf8')
-      //console.log(type)
-      memos[type] = Buffer.from(m.Memo.MemoData, 'hex')
-    }
-
-    const messageData = memos['https://interledger.org/rel/xrpMessage']
-    if (messageData) {
-      debug('got', direction, 'message with data', messageData.toString('utf8'))
-      this.emitAsync(direction + '_message',
-        JSON.parse(messageData.toString('utf8')))
-    }
+    const transaction = ev.transaction
 
     if (transaction.TransactionType === 'EscrowCreate') {
-      const id = memos['https://interledger.org/rel/xrpId'].toString('utf8')
-      const ilp = memos['https://interledger.org/rel/xrpTransfer'].toString('utf8')
+      const transfer = yield Translate.escrowCreateToTransfer(this, ev)
+      this.emitAsync(transfer.direction + '_prepare', transfer)
 
-      this._transfers[id] = {
-        id: id,
-        ilp: ilp,
-        hash: transaction.hash,
-        owner: transaction.Account,
-        sequence: transaction.Sequence
-      }
-      this._transfers[transaction.Account + ':' + transaction.Sequence] = this._transfers[id]
+    } else if (transaction.TransactionType === 'EscrowFinish') {
+      const transfer = yield Translate.escrowFinishToTransfer(this, ev)
+      // TODO: translate to LPI fulfillment
+      const fulfillment = transaction.Fulfillment
+      this.emitAsync(transfer.direction + '_fulfill', transfer, fulfillment)
 
-      this.emitAsync(direction + '_prepare', {
-        id: id,
-        to: this._prefix + transaction.Destination,
-        from: this._prefix + transaction.Account,
-        ledger: this._prefix,
-        amount: transaction.Amount,
-        ilp: ilp,
-        executionCondition: transaction.Condition,
-        // TODO: this needs to be more exact
-        expiresAt: (new Date()).toISOString()
-      })
-    }
-
-    if (transaction.TransactionType === 'EscrowFinish') {
-      const cached = this._transfers[transaction.Owner + ':' + transaction.OfferSequence]
-
-      this._api.getTransaction(cached.hash)
-        .then((tx) => {
-          if (tx.address === this._address) direction = 'outgoing'
-          if (tx.specification.destination === this._address) direction = 'incoming'
-
-          return this.emitAsync(direction + '_fulfill', {
-            id: cached.id,
-            to: this._prefix + tx.specification.destination,
-            from: this._prefix + tx.address,
-            ledger: this._prefix,
-            amount: (new BigNumber(tx.specification.amount)).shift(6).round().toString(),
-            ilp: cached.ilp,
-            executionCondition: tx.specification.condition,
-            // TODO: this needs to be more exact
-            expiresAt: (new Date())
-          }, transaction.Fulfillment)
-        })
-        .then(() => {
-          debug('emitted!')
-        })
+    } else if (transaction.TransactionType === 'Payment') {
+      const message = Translate.paymentToMessage(this, ev)
+      this.emitAsync(message.direction + '_message', message)
     }
   }
 }
