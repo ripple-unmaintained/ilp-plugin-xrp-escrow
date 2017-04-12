@@ -84,6 +84,10 @@ function * escrowFinishToTransfer (plugin, event) {
   return yield escrowToTransfer(plugin, event)
 }
 
+function * escrowCancelToTransfer (plugin, event) {
+  return yield escrowToTransfer(plugin, event)
+}
+
 function paymentToMessage (plugin, event) {
   const transaction = event.transaction
   const memos = parseMemos(transaction.Memos)
@@ -103,5 +107,6 @@ module.exports = {
   parseEscrow,
   rippleToISO,
   escrowCreateToTransfer,
-  escrowFinishToTransfer
+  escrowFinishToTransfer,
+  escrowCancelToTransfer
 }

@@ -130,6 +130,9 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     yield this._api.submit(signed.signedTransaction)
     debug('submitted transaction')
+
+    debug('setting up expiry')
+    this._setupExpiry(transfer.id, transfer.expiresAt)
   }
 
   * _fulfillCondition (transferId, fulfillment) {
@@ -156,6 +159,35 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     yield this._api.submit(signed.signedTransaction)
     debug('submitted fulfill transaction')
+  }
+
+  _setupExpiry (transferId, expiresAt) {
+    const that = this
+    // TODO: this is a bit of an unsafe hack, but if the time is not adjusted
+    // like this, the cancel transaction fails.
+    const delay = (new Date(expiresAt)) - (new Date()) + 5000
+
+    setTimeout(
+      co.wrap(that._expireTransfer).bind(that, transferId),
+      delay)
+  }
+
+  * _expireTransfer (transferId) {
+    if (this._transfers[transferId].Done) return
+    debug('preparing to cancel transfer at', new Date().toISOString())
+
+    const cached = this._transfers[transferId]
+    const tx = yield this._api.prepareEscrowCancellation(this._address, {
+      owner: cached.Account,
+      escrowSequence: cached.Sequence
+    })
+    
+    const signed = this._api.sign(tx.txJSON, this._secret)
+    debug('signing and submitting transaction: ' + tx.txJSON)
+    debug('cancel tx id of', transferId, 'is', signed.id)
+
+    yield this._api.submit(signed.signedTransaction)
+    debug('submitted cancel transaction')
   }
 
   * _sendMessage (message) {
@@ -200,7 +232,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       const transfer = yield Translate.escrowCreateToTransfer(this, ev)
       this.emitAsync(transfer.direction + '_prepare', transfer)
 
-    // TODO: handle EscrowCancel as well
     } else if (transaction.TransactionType === 'EscrowFinish') {
       const transfer = yield Translate.escrowFinishToTransfer(this, ev)
       // TODO: clear the cache at some point
@@ -209,6 +240,16 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
       // remove note to self from the note to self cache
       delete this._notesToSelf[transfer.id]
+      this._transfers[transfer.id].Done = true
+    
+    } else if (transaction.TransactionType === 'EscrowCancel') {
+      // TODO: clear the cache at some point
+      const transfer = yield Translate.escrowCancelToTransfer(this, ev)
+      this.emitAsync(transfer.direction + '_cancel', transfer)
+
+      // remove note to self from the note to self cache
+      delete this._notesToSelf[transfer.id]
+      this._transfers[transfer.id].Done = true
 
     } else if (transaction.TransactionType === 'Payment') {
       const message = Translate.paymentToMessage(this, ev)
