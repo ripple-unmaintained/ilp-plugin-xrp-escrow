@@ -10,6 +10,7 @@ const crypto = require('crypto')
 
 const Translate = require('./translate')
 const Condition = require('./condition')
+const Errors = require('./errors')
 
 module.exports = class PluginXrpEscrow extends EventEmitter2 {
   constructor (opts) {
@@ -19,17 +20,28 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._secret = opts.secret
     this._connected = false
     this._prefix = 'g.crypto.ripple.'
+
     this._transfers = {}
     this._notesToSelf = {}
+    this._fulfillments = {}
+
+    if (!this._secret) {
+      throw new Errors.InvalidFieldsError('missing opts.secret')
+    }
 
     const keys = keypairs.deriveKeypair(this._secret)
     const address = keypairs.deriveAddress(keys.publicKey)
     this._address = opts.address || address
 
     if (address !== this._address) {
-      throw new Error('opts.address does not correspond to opts.secret.' +
+      throw new Errors.InvalidFieldsError(
+        'opts.address does not correspond to opts.secret.' +
         ' address=' + address +
         ' opts=' + JSON.stringify(opts))
+    }
+
+    if (!this._server) {
+      throw new Errors.InvalidFieldsError('missing opts.server')
     }
 
     this._api = new RippleAPI({ server: this._server })
@@ -41,6 +53,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this.sendTransfer = co.wrap(this._sendTransfer).bind(this)
     this.fulfillCondition = co.wrap(this._fulfillCondition).bind(this)
     this.sendMessage = co.wrap(this._sendMessage).bind(this)
+    this.getFulfillment = co.wrap(this._getFulfillment).bind(this)
+    this.rejectIncomingTransfer = co.wrap(this._rejectIncomingTransfer).bind(this)
   }
 
   * _connect () {
@@ -54,6 +68,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     this._api.connection.on('transaction', (ev) => {
       //console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
+      // TODO: handle error results
       if (ev.engine_result !== 'tesSUCCESS') return
       if (!ev.validated) return
 
@@ -97,6 +112,27 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     return dropBalance.round().toString()
   }
 
+  * _getFulfillment (transferId) {
+    assert(this._connected, 'plugin must be connected before getFulfillment')
+    debug('fetching fulfillment of', transferId) 
+
+    const transfer = this._transfers[transferId]
+    const fulfillment = this._fulfillments[transferId]
+
+    if (!fulfillment && !transfer) {
+      throw new Errors.TransferNotFoundError('no transfer with id ' +
+        transferId + ' found')
+    } else if (!fulfillment && transfer.Done) {
+      throw new Errors.AlreadyRolledBackError(transferId +
+        ' has already been cancelled')
+    } else if (!fulfillment) {
+      throw new Errors.MissingFulfillmentError(transferId +
+        ' has neither been fulfilled nor cancelled yet')
+    }
+
+    return fulfillment
+  }
+
   * _sendTransfer (transfer) {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
@@ -107,8 +143,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     // TODO: is there a better way to do note to self?
     this._notesToSelf[transfer.id] = JSON.parse(JSON.stringify(transfer.noteToSelf))
 
-    debug('sending', dropAmount.toString(), 'to', localAddress)
-    debug('condition', transfer.executionCondition)
+    debug('sending', dropAmount.toString(), 'to', localAddress,
+      'condition', transfer.executionCondition)
 
     const tx = yield this._api.prepareEscrowCreation(this._address, {
       amount: dropAmount.toString(),
@@ -196,7 +232,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     const that = this
     return new Promise((resolve) => {
-      function done (transfer) => {
+      function done (transfer) {
         if (transfer.id !== transferId) return
         that.removeListener('incoming_cancel', done)
         that.removeListener('outgoing_cancel', done)
@@ -258,6 +294,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
       // remove note to self from the note to self cache
       delete this._notesToSelf[transfer.id]
+      this._fulfillments[transfer.id] = fulfillment
       this._transfers[transfer.id].Done = true
     
     } else if (transaction.TransactionType === 'EscrowCancel') {
