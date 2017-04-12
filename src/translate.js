@@ -5,6 +5,11 @@ const ID_REL = 'https://interledger.org/rel/xrpId'
 const ILP_REL = 'https://interledger.org/rel/xrpIlp'
 const MESSAGE_REL = 'https://interledger.org/rel/xrpMessage'
 
+function rippleToISO (rippleTime) {
+  const timestamp = (rippleTime + 0x386D4380) * 1000
+  return new Date(timestamp).toISOString()
+}
+
 function parseEscrow (event) {
   for (const entry of (event.meta.AffectedNodes || [])) {
     //console.log('\x1b[32mESCROW\x1b[39m', JSON.stringify(entry, null, 2))
@@ -67,7 +72,7 @@ function * escrowToTransfer (plugin, event) {
     executionCondition: Condition.rippleToCondition(escrow.node.Condition),
     noteToSelf: plugin._notesToSelf[id],
     // TODO: this needs to be parsed from ripple timestamp
-    expiresAt: (new Date()).toISOString()
+    expiresAt: rippleToISO(escrow.node.CancelAfter)
   }
 }
 
@@ -96,6 +101,7 @@ function paymentToMessage (plugin, event) {
 module.exports = {
   paymentToMessage,
   parseEscrow,
+  rippleToISO,
   escrowCreateToTransfer,
   escrowFinishToTransfer
 }
