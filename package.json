@@ -13,6 +13,7 @@
     "co": "^4.6.0",
     "debug": "^2.6.3",
     "eventemitter2": "^4.1.0",
+    "five-bells-condition": "^5.0.1",
     "ripple-keypairs": "^0.10.0",
     "ripple-lib": "^0.17.6"
   }

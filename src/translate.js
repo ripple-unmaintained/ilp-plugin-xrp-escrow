@@ -1,4 +1,6 @@
 'use strict'
+const Condition = require('./condition')
+
 const ID_REL = 'https://interledger.org/rel/xrpId'
 const ILP_REL = 'https://interledger.org/rel/xrpIlp'
 const MESSAGE_REL = 'https://interledger.org/rel/xrpMessage'
@@ -62,7 +64,7 @@ function * escrowToTransfer (plugin, event) {
     amount: escrow.node.Amount,
     ilp: ilp,
     // TODO: this needs to be formatted to LPI
-    executionCondition: escrow.node.Condition,
+    executionCondition: Condition.rippleToCondition(escrow.node.Condition),
     // TODO: this needs to be parsed from ripple timestamp
     expiresAt: (new Date()).toISOString()
   }

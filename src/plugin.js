@@ -6,7 +6,10 @@ const debug = require('debug')('ilp-plugin-xrp-escrow')
 const EventEmitter2 = require('eventemitter2')
 const BigNumber = require('bignumber.js')
 const assert = require('assert')
+const crypto = require('crypto')
+
 const Translate = require('./translate')
+const Condition = require('./condition')
 
 module.exports = class PluginXrpEscrow extends EventEmitter2 {
   constructor (opts) {
@@ -49,7 +52,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
 
     this._api.connection.on('transaction', (ev) => {
-      console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
+      //console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
       if (ev.engine_result !== 'tesSUCCESS') return
       if (!ev.validated) return
 
@@ -99,19 +102,16 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     
     const [ , localAddress ] = transfer.to.match(/^g\.crypto\.ripple\.(.+)/)
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
-    const hexCondition = Buffer
-      .from(transfer.executionCondition, 'base64')
-      .toString('hex')
 
     debug('sending', dropAmount.toString(), 'to', localAddress)
-    debug('condition', hexCondition.toUpperCase())
+    debug('condition', transfer.executionCondition)
 
     const tx = yield this._api.prepareEscrowCreation(this._address, {
       amount: dropAmount.toString(),
       destination: localAddress.split('.')[0],
       allowCancelAfter: transfer.expiresAt,
-      //condition: hexCondition.toUpperCase(),
-      condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
+      condition: Condition.conditionToRipple(transfer.executionCondition),
+      //condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
       memos: [{
         type: 'https://interledger.org/rel/xrpIlp',
         data: transfer.ilp
@@ -134,11 +134,17 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('preparing to fulfill condition')
 
     const cached = this._transfers[transferId]
+    const condition = crypto
+      .createHash('sha256')
+      .update(Buffer.from(fulfillment, 'base64'))
+      .digest()
+      .toString('base64')
+
     const tx = yield this._api.prepareEscrowExecution(this._address, {
       owner: cached.Account,
       escrowSequence: cached.Sequence,
-      condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
-      fulfillment: 'A0028000'
+      condition: Condition.conditionToRipple(condition),
+      fulfillment: Condition.fulfillmentToRipple(fulfillment)
     })
     
     const signed = this._api.sign(tx.txJSON, this._secret)
@@ -194,7 +200,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     } else if (transaction.TransactionType === 'EscrowFinish') {
       const transfer = yield Translate.escrowFinishToTransfer(this, ev)
       // TODO: translate to LPI fulfillment
-      const fulfillment = transaction.Fulfillment
+      const fulfillment = Condition.rippleToFulfillment(transaction.Fulfillment)
       this.emitAsync(transfer.direction + '_fulfill', transfer, fulfillment)
 
     } else if (transaction.TransactionType === 'Payment') {
