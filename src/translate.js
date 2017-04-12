@@ -53,6 +53,7 @@ function * escrowToTransfer (plugin, event) {
   const id = memos[ID_REL].toString('utf8')
   const ilp = memos[ILP_REL].toString('utf8')
 
+  // keep two references, so the plugin and the translator can access
   plugin._transfers[id] = plugin._transfers[escrow.index]
   
   return {
@@ -63,8 +64,8 @@ function * escrowToTransfer (plugin, event) {
     ledger: plugin._prefix,
     amount: escrow.node.Amount,
     ilp: ilp,
-    // TODO: this needs to be formatted to LPI
     executionCondition: Condition.rippleToCondition(escrow.node.Condition),
+    noteToSelf: plugin._notesToSelf[id],
     // TODO: this needs to be parsed from ripple timestamp
     expiresAt: (new Date()).toISOString()
   }

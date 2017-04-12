@@ -20,6 +20,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._connected = false
     this._prefix = 'g.crypto.ripple.'
     this._transfers = {}
+    this._notesToSelf = {}
 
     const keys = keypairs.deriveKeypair(this._secret)
     const address = keypairs.deriveAddress(keys.publicKey)
@@ -103,6 +104,9 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     const [ , localAddress ] = transfer.to.match(/^g\.crypto\.ripple\.(.+)/)
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
 
+    // TODO: is there a better way to do note to self?
+    this._notesToSelf[transfer.id] = JSON.parse(JSON.stringify(transfer.noteToSelf))
+
     debug('sending', dropAmount.toString(), 'to', localAddress)
     debug('condition', transfer.executionCondition)
 
@@ -111,7 +115,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       destination: localAddress.split('.')[0],
       allowCancelAfter: transfer.expiresAt,
       condition: Condition.conditionToRipple(transfer.executionCondition),
-      //condition: 'A0258020E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855810100',
       memos: [{
         type: 'https://interledger.org/rel/xrpIlp',
         data: transfer.ilp
@@ -120,7 +123,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
         data: transfer.id
       }]
     })
-
+    
     const signed = this._api.sign(tx.txJSON, this._secret)
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('transaction id of', transfer.id, 'is', signed.id)
@@ -197,11 +200,15 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       const transfer = yield Translate.escrowCreateToTransfer(this, ev)
       this.emitAsync(transfer.direction + '_prepare', transfer)
 
+    // TODO: handle EscrowCancel as well
     } else if (transaction.TransactionType === 'EscrowFinish') {
       const transfer = yield Translate.escrowFinishToTransfer(this, ev)
-      // TODO: translate to LPI fulfillment
+      // TODO: clear the cache at some point
       const fulfillment = Condition.rippleToFulfillment(transaction.Fulfillment)
       this.emitAsync(transfer.direction + '_fulfill', transfer, fulfillment)
+
+      // remove note to self from the note to self cache
+      delete this._notesToSelf[transfer.id]
 
     } else if (transaction.TransactionType === 'Payment') {
       const message = Translate.paymentToMessage(this, ev)
