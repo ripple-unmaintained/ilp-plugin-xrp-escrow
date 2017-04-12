@@ -137,7 +137,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
   * _fulfillCondition (transferId, fulfillment) {
     assert(this._connected, 'plugin must be connected before fulfillCondition')
-    debug('preparing to fulfill condition')
+    debug('preparing to fulfill condition', transferId)
 
     const cached = this._transfers[transferId]
     const condition = crypto
@@ -188,6 +188,24 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     yield this._api.submit(signed.signedTransaction)
     debug('submitted cancel transaction')
+  }
+
+  * _rejectIncomingTransfer (transferId) {
+    if (this._transfers[transferId].Done) return
+    debug('pretending to reject incoming transfer', transferId)
+
+    const that = this
+    return new Promise((resolve) => {
+      function done (transfer) => {
+        if (transfer.id !== transferId) return
+        that.removeListener('incoming_cancel', done)
+        that.removeListener('outgoing_cancel', done)
+        resolve()
+      }
+
+      that.on('incoming_cancel', done)
+      that.on('outgoing_cancel', done)
+    })
   }
 
   * _sendMessage (message) {
