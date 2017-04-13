@@ -11,6 +11,7 @@ const crypto = require('crypto')
 const Translate = require('./translate')
 const Condition = require('./condition')
 const Errors = require('./errors')
+const Submitter = require('./submitter')
 
 module.exports = class PluginXrpEscrow extends EventEmitter2 {
   constructor (opts) {
@@ -67,10 +68,10 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
 
     this._api.connection.on('transaction', (ev) => {
-      //console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
+      // console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
       // TODO: handle error results
-      if (ev.engine_result !== 'tesSUCCESS') return
       if (!ev.validated) return
+      if (ev.engine_result !== 'tesSUCCESS') return
 
       co(this._handleTransaction.bind(this, ev))
     })
@@ -164,8 +165,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('transaction id of', transfer.id, 'is', signed.id)
 
-    yield this._api.submit(signed.signedTransaction)
-    debug('submitted transaction')
+    yield Submitter.submit(this._api, signed)
+    debug('completed transaction')
 
     debug('setting up expiry')
     this._setupExpiry(transfer.id, transfer.expiresAt)
@@ -193,8 +194,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('fulfill tx id of', transferId, 'is', signed.id)
 
-    yield this._api.submit(signed.signedTransaction)
-    debug('submitted fulfill transaction')
+    yield Submitter.submit(this._api, signed)
+    debug('completed fulfill transaction')
   }
 
   _setupExpiry (transferId, expiresAt) {
@@ -212,18 +213,31 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     if (this._transfers[transferId].Done) return
     debug('preparing to cancel transfer at', new Date().toISOString())
 
-    const cached = this._transfers[transferId]
-    const tx = yield this._api.prepareEscrowCancellation(this._address, {
-      owner: cached.Account,
-      escrowSequence: cached.Sequence
-    })
-    
-    const signed = this._api.sign(tx.txJSON, this._secret)
-    debug('signing and submitting transaction: ' + tx.txJSON)
-    debug('cancel tx id of', transferId, 'is', signed.id)
+    // make sure that the promise rejection is handled no matter
+    // which step it happens during.
+    try {
+      const cached = this._transfers[transferId]
+      const tx = yield this._api.prepareEscrowCancellation(this._address, {
+        owner: cached.Account,
+        escrowSequence: cached.Sequence
+      })
+      
+      const signed = this._api.sign(tx.txJSON, this._secret)
+      debug('signing and submitting transaction: ' + tx.txJSON)
+      debug('cancel tx id of', transferId, 'is', signed.id)
 
-    yield this._api.submit(signed.signedTransaction)
-    debug('submitted cancel transaction')
+      yield Submitter.submit(this._api, signed)
+      debug('completed cancel transaction')
+    } catch (e) {
+      debug('CANCELLATION FAILURE! error was:', e.message)
+
+      // just retry if it was a ledger thing
+      // TODO: is there any other scenario to retry under?
+      if (e.name !== 'NotAcceptedError') return
+
+      debug('CANCELLATION FAILURE! (' + transferId + ') retrying...')
+      yield this._expireTransfer(transferId)
+    }
   }
 
   * _rejectIncomingTransfer (transferId) {
@@ -274,8 +288,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting message tx: ' + tx.txJSON)
     debug('message tx is', signed.id)
 
-    yield this._api.submit(signed.signedTransaction)
-    debug('submitted message tx')
+    yield Submitter.submit(this._api, signed)
+    debug('completed message tx')
   }
 
   * _handleTransaction (ev) {
