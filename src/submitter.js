@@ -3,7 +3,7 @@
 const Errors = require('./errors')
 const debug = require('debug')('ilp-plugin-xrp-escrow:submitter')
 
-function * submit (api, signed) {
+async function submit (api, signed) {
   const { signedTransaction } = signed
   const txHash = signed.id
 
@@ -29,10 +29,10 @@ function * submit (api, signed) {
     api.connection.on('transaction', handleTransactionResult)
   })
 
-  yield api.submit(signedTransaction)
+  await api.submit(signedTransaction)
   debug('submitted transaction', txHash)
 
-  yield result
+  await result
 }
 
 module.exports = { submit }

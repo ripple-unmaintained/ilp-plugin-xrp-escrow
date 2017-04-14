@@ -12,3 +12,5 @@ const plugin = new PluginXrpEscrow({
   server: 'wss://s.altnet.rippletest.net:51233'
 })
 ```
+
+Requires node 7 or higher, to support async/await.

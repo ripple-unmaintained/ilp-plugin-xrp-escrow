@@ -41,7 +41,7 @@ function getDirection (plugin, transaction) {
     JSON.stringify(event))
 }
 
-function * escrowToTransfer (plugin, event) {
+function escrowToTransfer (plugin, event) {
   const escrow = parseEscrow(event)
   const transaction = event.transaction
 
@@ -76,16 +76,16 @@ function * escrowToTransfer (plugin, event) {
   }
 }
 
-function * escrowCreateToTransfer (plugin, event) {
-  return yield escrowToTransfer(plugin, event)
+function escrowCreateToTransfer (plugin, event) {
+  return escrowToTransfer(plugin, event)
 }
 
-function * escrowFinishToTransfer (plugin, event) {
-  return yield escrowToTransfer(plugin, event)
+function escrowFinishToTransfer (plugin, event) {
+  return escrowToTransfer(plugin, event)
 }
 
-function * escrowCancelToTransfer (plugin, event) {
-  return yield escrowToTransfer(plugin, event)
+function escrowCancelToTransfer (plugin, event) {
+  return escrowToTransfer(plugin, event)
 }
 
 function paymentToMessage (plugin, event) {
