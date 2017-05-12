@@ -251,9 +251,14 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
   }
 
-  async sendMessage (message) {
+  async sendMessage (_message) {
     assert(this._connected, 'plugin must be connected before sendMessage')
-    debug('preparing to send message')
+
+    const message = Object.assign({}, _message)
+    debug('preparing to send message:', message)
+    if (message.account) {
+      message.to = message.account
+    }
 
     const [ , localAddress ] = message.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
     const tx = await this._api.preparePayment(this._address, {
