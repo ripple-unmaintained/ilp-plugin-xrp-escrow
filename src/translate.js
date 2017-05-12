@@ -95,8 +95,8 @@ function paymentToMessage (plugin, event) {
 
   return {
     data: JSON.parse(messageData.toString('utf8')),
-    to: transaction.Account,
-    from: transaction.Destination,
+    to: plugin._prefix + transaction.Destination,
+    from: plugin._prefix + transaction.Account,
     ledger: plugin._prefix,
     direction: getDirection(plugin, transaction)
   }
