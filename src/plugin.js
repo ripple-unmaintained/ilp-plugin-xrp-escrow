@@ -8,6 +8,7 @@ const BigNumber = require('bignumber.js')
 const assert = require('assert')
 const crypto = require('crypto')
 
+const HttpRpc = require('./rpc')
 const Translate = require('./translate')
 const Condition = require('./condition')
 const Errors = require('./errors')
@@ -25,6 +26,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._transfers = {}
     this._notesToSelf = {}
     this._fulfillments = {}
+    this._rpcUris = opts.rpcUris || {}
 
     if (!this._secret) {
       throw new Errors.InvalidFieldsError('missing opts.secret')
@@ -46,6 +48,19 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     }
 
     this._api = new RippleAPI({ server: this._server })
+
+    // set up RPC if peer has your RPC uri
+    this._rpc = new HttpRpc(this)
+    this._rpc.addMethod('send_message', this._handleSendMessage)
+    this.isAuthorized = () => true
+    this.receive = co.wrap(this._rpc._receive).bind(this._rpc)
+  }
+
+  // used when peer has enabled rpc
+  async _handleSendMessage (message) {
+    // TODO: validate message
+    this.emitAsync('incoming_message', message)
+    return true
   }
 
   async connect () {
@@ -253,6 +268,17 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
   async sendMessage (_message) {
     assert(this._connected, 'plugin must be connected before sendMessage')
+
+    if (this._rpcUris[_message.to]) {
+      this._rpc.call(
+        this._rpcUris[_message.to],
+        'send_message',
+        this._prefix,
+        [_message])
+
+      this.emitAsync('outgoing_message', _message)
+      return
+    }
 
     const message = Object.assign({}, _message)
     debug('preparing to send message:', message)
