@@ -7,6 +7,7 @@ const EventEmitter2 = require('eventemitter2')
 const BigNumber = require('bignumber.js')
 const assert = require('assert')
 const crypto = require('crypto')
+const uuid = require('uuid')
 
 const HttpRpc = require('./rpc')
 const Translate = require('./translate')
@@ -25,6 +26,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
     this._transfers = {}
     this._notesToSelf = {}
+    this._pendingRequests = {}
     this._fulfillments = {}
     this._rpcUris = opts.rpcUris || {}
 
@@ -54,6 +56,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._rpc.addMethod('send_message', this._handleSendMessage)
     this.isAuthorized = () => true
     this.receive = co.wrap(this._rpc._receive).bind(this._rpc)
+    this.on('incoming_message', this._handleIncomingMessage.bind(this))
   }
 
   // used when peer has enabled rpc
@@ -61,6 +64,15 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     // TODO: validate message
     this.emitAsync('incoming_message', message)
     return true
+  }
+
+  async _handleIncomingMessage (message) {
+    const pendingRequest = this._pendingRequests[message.id]
+    if (!pendingRequest) return
+
+    delete this._pendingRequests[message.id]
+    this.emitAsync('incoming_response', message)
+    pendingRequest.resolve(message)
   }
 
   async connect () {
@@ -266,7 +278,29 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
   }
 
-  async sendMessage (_message) {
+  async sendRequest (request) {
+    const requestId = request.id || uuid()
+    const responded = new Promise((resolve, reject) => {
+      this._pendingRequests[requestId] = { resolve, reject }
+      this._sendMessage(Object.assign({ id: requestId }, request)).catch((e) => {
+        delete this._pendingRequests[requestId]
+        reject(e)
+      })
+    })
+
+    this.emitAsync('outgoing_request', request)
+    return yield Promise.race([
+      responded,
+      new Promise((resolve) => {
+        setTimeout(resolve, request.timeout || 20000)
+      }).then(() => {
+        delete this._pendingRequests[requestId]
+        throw new Error('sendRequest timed out')
+      })
+    ])
+  }
+
+  async _sendMessage (_message) {
     assert(this._connected, 'plugin must be connected before sendMessage')
 
     if (this._rpcUris[_message.to]) {
@@ -286,6 +320,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       message.to = message.account
     }
 
+    const data = { id: message.id, ilp: message.ilp, custom: message.custom }
     const [ , localAddress ] = message.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
     const tx = await this._api.preparePayment(this._address, {
       source: {
@@ -304,7 +339,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       },
       memos: [{
         type: 'https://interledger.org/rel/xrpMessage',
-        data: JSON.stringify(message.data)
+        data: JSON.stringify(data)
       }]
     })
 

@@ -15,6 +15,7 @@
     "eventemitter2": "^4.1.0",
     "five-bells-condition": "^5.0.1",
     "ripple-keypairs": "^0.10.0",
-    "ripple-lib": "^0.17.6"
+    "ripple-lib": "^0.17.6",
+    "uuid": "^3.1.0"
   }
 }

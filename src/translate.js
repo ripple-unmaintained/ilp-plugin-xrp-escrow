@@ -92,13 +92,16 @@ function paymentToMessage (plugin, event) {
   const transaction = event.transaction
   const memos = parseMemos(transaction.Memos)
   const messageData = memos[MESSAGE_REL]
+  const data = JSON.parse(messageData.toString('utf8')),
 
   return {
-    data: JSON.parse(messageData.toString('utf8')),
+    id: data.id,
     to: plugin._prefix + transaction.Destination,
     from: plugin._prefix + transaction.Account,
     ledger: plugin._prefix,
-    direction: getDirection(plugin, transaction)
+    direction: getDirection(plugin, transaction),
+    ilp: data.ilp,
+    custom: data.custom
   }
 }
 
