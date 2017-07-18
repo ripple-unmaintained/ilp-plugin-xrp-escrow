@@ -92,7 +92,7 @@ function paymentToMessage (plugin, event) {
   const transaction = event.transaction
   const memos = parseMemos(transaction.Memos)
   const messageData = memos[MESSAGE_REL]
-  const data = JSON.parse(messageData.toString('utf8')),
+  const data = JSON.parse(messageData.toString('utf8'))
 
   return {
     id: data.id,

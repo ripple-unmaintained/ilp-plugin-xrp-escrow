@@ -289,7 +289,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
 
     this.emitAsync('outgoing_request', request)
-    return yield Promise.race([
+    return await Promise.race([
       responded,
       new Promise((resolve) => {
         setTimeout(resolve, request.timeout || 20000)
