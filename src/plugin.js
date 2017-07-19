@@ -22,8 +22,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._server = opts.server
     this._secret = opts.secret
     this._connected = false
-    this._allocation = opts.test ? 'test.' : 'g.'
-    this._prefix = this._allocation + 'crypto.ripple.escrow.'
+    this._allocation = opts.test ? 'test' : 'g'
+    this._prefix = this._allocation + '.crypto.ripple.escrow.'
 
     this._transfers = {}
     this._notesToSelf = {}
@@ -184,7 +184,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
     
-    const [ , localAddress ] = transfer.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
+    const [ , localAddress ] = transfer.to.match(new RegExp('^' + this._allocation + '\.crypto\.ripple\.escrow\.(.+)'))
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
 
     // TODO: is there a better way to do note to self?
@@ -351,7 +351,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     }
 
     const data = { id: message.id, ilp: message.ilp, custom: message.custom }
-    const [ , localAddress ] = message.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
+    const [ , localAddress ] = message.to.match(new RegExp('^' + this._allocation + '\.crypto\.ripple\.escrow\.(.+)'))
     const tx = await this._api.preparePayment(this._address, {
       source: {
         address: this._address,
