@@ -22,13 +22,15 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._server = opts.server
     this._secret = opts.secret
     this._connected = false
-    this._prefix = 'g.crypto.ripple.escrow.'
+    this._allocation = opts.test ? 'test.' : 'g.'
+    this._prefix = this._allocation + 'crypto.ripple.escrow.'
 
     this._transfers = {}
     this._notesToSelf = {}
     this._pendingRequests = {}
     this._fulfillments = {}
     this._rpcUris = opts.rpcUris || {}
+    this._requestHandler = () => Promise.resolve()
 
     if (!this._secret) {
       throw new Errors.InvalidFieldsError('missing opts.secret')
@@ -59,6 +61,10 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this.on('incoming_message', this._handleIncomingMessage.bind(this))
   }
 
+  registerRequestHandler (handler) {
+    this._requestHandler = handler
+  }
+
   // used when peer has enabled rpc
   async _handleSendMessage (message) {
     // TODO: validate message
@@ -67,12 +73,36 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
   }
 
   async _handleIncomingMessage (message) {
-    const pendingRequest = this._pendingRequests[message.id]
-    if (!pendingRequest) return
+    const messageId = message.id
+    const pendingRequest = this._pendingRequests[messageId]
+    if (pendingRequest) {
+      delete this._pendingRequests[messageId]
+      this.emitAsync('incoming_response', message)
+      pendingRequest.resolve(message)
+      return
+    }
 
-    delete this._pendingRequests[message.id]
-    this.emitAsync('incoming_response', message)
-    pendingRequest.resolve(message)
+    this.emitAsync('incomig_request', message)
+    if (!this._requestHandler) return
+    const responseMessage = await this._requestHandler(message)
+      .catch((e) => {
+        return {
+          ledger: message.ledger,
+          to: message.from,
+          from: message.to,
+          ilp: IlpPacket.serializeIlpError({
+            code: 'F00',
+            name: 'Bad Request',
+            triggeredBy: this.getAccount(),
+            forwardedBy: [],
+            triggeredAt: new Date(),
+            data: JSON.stringify({ message: e.message })
+          })
+        }
+      })
+
+    this.emitAsync('outgoing_response', responseMessage)
+    return this._sendMessage(Object.assign({id: messageId}, responseMessage))
   }
 
   async connect () {
