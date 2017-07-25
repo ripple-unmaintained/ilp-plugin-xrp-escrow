@@ -11,6 +11,7 @@
   "dependencies": {
     "bignumber.js": "^4.0.1",
     "co": "^4.6.0",
+    "co-request": "^1.0.0",
     "debug": "^2.6.3",
     "eventemitter2": "^4.1.0",
     "five-bells-condition": "^5.0.1",
