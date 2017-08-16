@@ -1,5 +1,4 @@
 'use strict'
-const IlpPacket = require('ilp-packet')
 const RippleAPI = require('ripple-lib').RippleAPI
 const keypairs = require('ripple-keypairs')
 const co = require('co')
