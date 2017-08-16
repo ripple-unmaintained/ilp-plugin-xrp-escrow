@@ -1,4 +1,5 @@
 'use strict'
+const IlpPacket = require('ilp-packet')
 const RippleAPI = require('ripple-lib').RippleAPI
 const keypairs = require('ripple-keypairs')
 const co = require('co')
@@ -119,7 +120,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
 
   async getFulfillment (transferId) {
     assert(this._connected, 'plugin must be connected before getFulfillment')
-    debug('fetching fulfillment of', transferId) 
+    debug('fetching fulfillment of', transferId)
 
     const transfer = this._transfers[transferId]
     const fulfillment = this._fulfillments[transferId]
@@ -141,7 +142,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
   async sendTransfer (transfer) {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
-    
+
     const [ , localAddress ] = transfer.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
 
@@ -164,7 +165,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
         data: transfer.id
       }]
     })
-    
+
     const signed = this._api.sign(tx.txJSON, this._secret)
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('transaction id of', transfer.id, 'is', signed.id)
@@ -197,7 +198,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       condition: Condition.conditionToRipple(condition),
       fulfillment: Condition.fulfillmentToRipple(fulfillment)
     })
-    
+
     const signed = this._api.sign(tx.txJSON, this._secret)
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('fulfill tx id of', transferId, 'is', signed.id)
@@ -229,7 +230,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
         owner: cached.Account,
         escrowSequence: cached.Sequence
       })
-      
+
       const signed = this._api.sign(tx.txJSON, this._secret)
       debug('signing and submitting transaction: ' + tx.txJSON)
       debug('cancel tx id of', transferId, 'is', signed.id)
@@ -323,7 +324,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     if (transaction.TransactionType === 'EscrowCreate') {
       const transfer = Translate.escrowCreateToTransfer(this, ev)
       this.emitAsync(transfer.direction + '_prepare', transfer)
-
     } else if (transaction.TransactionType === 'EscrowFinish') {
       const transfer = Translate.escrowFinishToTransfer(this, ev)
       // TODO: clear the cache at some point
@@ -334,7 +334,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       delete this._notesToSelf[transfer.id]
       this._fulfillments[transfer.id] = fulfillment
       this._transfers[transfer.id].Done = true
-    
     } else if (transaction.TransactionType === 'EscrowCancel') {
       // TODO: clear the cache at some point
       const transfer = Translate.escrowCancelToTransfer(this, ev)
@@ -343,7 +342,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       // remove note to self from the note to self cache
       delete this._notesToSelf[transfer.id]
       this._transfers[transfer.id].Done = true
-
     } else if (transaction.TransactionType === 'Payment') {
       const message = Translate.paymentToMessage(this, ev)
       this.emitAsync(message.direction + '_message', message)

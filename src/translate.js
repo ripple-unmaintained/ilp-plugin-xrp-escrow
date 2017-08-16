@@ -12,7 +12,7 @@ function rippleToISO (rippleTime) {
 
 function parseEscrow (event) {
   for (const entry of (event.meta.AffectedNodes || [])) {
-    //console.log('\x1b[32mESCROW\x1b[39m', JSON.stringify(entry, null, 2))
+    // console.log('\x1b[32mESCROW\x1b[39m', JSON.stringify(entry, null, 2))
     for (const nodeType of ['DeletedNode', 'CreatedNode']) {
       if (entry[nodeType] &&
         entry[nodeType].LedgerEntryType === 'Escrow') {
@@ -38,7 +38,7 @@ function getDirection (plugin, transaction) {
   if (transaction.Account === plugin._address) return 'outgoing'
   if (transaction.Destination === plugin._address) return 'incoming'
   throw new Error('tried to parse direction from invalid tx:' +
-    JSON.stringify(event))
+    JSON.stringify(transaction))
 }
 
 function escrowToTransfer (plugin, event) {
@@ -60,7 +60,7 @@ function escrowToTransfer (plugin, event) {
 
   // keep two references, so the plugin and the translator can access
   plugin._transfers[id] = plugin._transfers[escrow.index]
-  
+
   return {
     id: id,
     to: plugin._prefix + escrow.node.Destination,
