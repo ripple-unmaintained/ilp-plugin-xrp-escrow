@@ -12,7 +12,6 @@ const HttpRpc = require('./rpc')
 const Translate = require('./translate')
 const Condition = require('./condition')
 const Errors = require('./errors')
-const Submitter = require('./submitter')
 
 module.exports = class PluginXrpEscrow extends EventEmitter2 {
   constructor (opts) {
@@ -24,6 +23,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._prefix = opts.prefix || 'g.crypto.ripple.escrow.'
 
     this._transfers = {}
+    this._submitted = {}
     this._notesToSelf = {}
     this._fulfillments = {}
     this._rpcUris = opts.rpcUris || {}
@@ -138,6 +138,18 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     return fulfillment
   }
 
+  async submit (signed) {
+    const txHash = signed.id
+    const result = new Promise((resolve, reject) => {
+      this._submitted[txHash] = { resolve, reject }
+    })
+
+    await this._api.submit(signed.signedTransaction)
+    debug('submitted transaction', txHash)
+
+    await result
+  }
+
   async sendTransfer (transfer) {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
@@ -172,7 +184,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('transaction id of', transfer.id, 'is', signed.id)
 
-    await Submitter.submit(this._api, signed)
+    await this.submit(signed)
     debug('completed transaction')
 
     debug('setting up expiry')
@@ -205,7 +217,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting transaction: ' + tx.txJSON)
     debug('fulfill tx id of', transferId, 'is', signed.id)
 
-    await Submitter.submit(this._api, signed)
+    await this.submit(signed)
     debug('completed fulfill transaction')
   }
 
@@ -237,7 +249,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       debug('signing and submitting transaction: ' + tx.txJSON)
       debug('cancel tx id of', transferId, 'is', signed.id)
 
-      await Submitter.submit(this._api, signed)
+      await this.submit(signed)
       debug('completed cancel transaction')
     } catch (e) {
       debug('CANCELLATION FAILURE! error was:', e.message)
@@ -319,11 +331,24 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     debug('signing and submitting message tx: ' + tx.txJSON)
     debug('message tx is', signed.id)
 
-    await Submitter.submit(this._api, signed)
+    await this.submit(signed)
     debug('completed message tx')
   }
 
   _handleTransaction (ev) {
+    // handle submit result:
+    if (ev.validated && ev.transaction && this._submitted[ev.transaction.hash]) {
+      // give detailed error on failure
+      if (ev.engine_result !== 'tesSUCCESS') {
+        this._submitted[ev.transaction.hash].reject(new Errors.NotAcceptedError('transaction with hash "' +
+          txHash + '" failed with engine result: ' +
+          JSON.stringify(ev)))
+      }
+
+      // no info returned on success
+      this._submitted[ev.transaction.hash].resolve(null)
+    }
+
     debug('got a notification of a transaction')
     const transaction = ev.transaction
 
