@@ -28,6 +28,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._fulfillments = {}
     this._rpcUris = opts.rpcUris || {}
 
+    this.tasks = []
+
     if (!this._secret) {
       throw new Errors.InvalidFieldsError('missing opts.secret')
     }
@@ -137,7 +139,29 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     return fulfillment
   }
 
-  async sendTransfer (transfer) {
+  doNext() {
+    if (this.tasks.length) {
+      this.tasking = true
+      const task = this.tasks.shift()
+      this.doSendTransfer(task.transfer).then(task.resolve, task.reject).then(() => {
+        this.doNext()
+      })
+    } else {
+      this.tasking = false
+    }
+  }
+
+  sendTransfer (transfer) {
+    const ret = new Promise((resolve, reject) => {
+      this.tasks.push({ resolve, reject, transfer })
+    })
+    if (!this.tasking) {
+      this.doNext()
+    }
+    return ret
+  }
+
+  async doSendTransfer(transfer) {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
     if (typeof transfer.to !== 'string' || !transfer.to.startsWith(this._prefix)) {
