@@ -49,7 +49,8 @@ const PluginXrpEscrow = require('ilp-plugin-xrp-escrow')
 
 const plugin = new PluginXrpEscrow({
   secret: '<your hot wallet secret>',
-  server: 'wss://s1.ripple.com'
+  server: 'wss://s1.ripple.com',
+  prefix: 'g.crypto.ripple.escrow.' // optional
 })
 ```
 

@@ -21,7 +21,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._server = opts.server
     this._secret = opts.secret
     this._connected = false
-    this._prefix = 'g.crypto.ripple.escrow.'
+    this._prefix = opts.prefix || 'g.crypto.ripple.escrow.'
 
     this._transfers = {}
     this._notesToSelf = {}
@@ -141,8 +141,11 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
   async sendTransfer (transfer) {
     assert(this._connected, 'plugin must be connected before sendTransfer')
     debug('preparing to create escrowed transfer')
+    if (typeof transfer.to !== 'string' || !transfer.to.startsWith(this._prefix)) {
+      throw new Error('transfer.to "' + transfer.to + '" does not start with ' + this._prefix)
+    }
 
-    const [ , localAddress ] = transfer.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
+    const localAddress = transfer.to.substring(this._prefix.length)
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
 
     // TODO: is there a better way to do note to self?
@@ -286,7 +289,11 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       message.to = message.account
     }
 
-    const [ , localAddress ] = message.to.match(/^g\.crypto\.ripple\.escrow\.(.+)/)
+    if (typeof message.to !== 'string' || !message.to.startsWith(this._prefix)) {
+      throw new Error('message.to "' + message.to + '" does not start with ' + this._prefix)
+    }
+
+    const localAddress = message.to.substring(this._prefix.length)
     const tx = await this._api.preparePayment(this._address, {
       source: {
         address: this._address,
