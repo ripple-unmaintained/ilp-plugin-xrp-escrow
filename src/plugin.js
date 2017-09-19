@@ -341,7 +341,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       // give detailed error on failure
       if (ev.engine_result !== 'tesSUCCESS') {
         this._submitted[ev.transaction.hash].reject(new Errors.NotAcceptedError('transaction with hash "' +
-          txHash + '" failed with engine result: ' +
+          ev.transaction.hash + '" failed with engine result: ' +
           JSON.stringify(ev)))
       } else {
         // no info returned on success
