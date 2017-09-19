@@ -149,7 +149,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     const dropAmount = (new BigNumber(transfer.amount)).shift(-6)
 
     // TODO: is there a better way to do note to self?
-    this._notesToSelf[transfer.id] = JSON.parse(JSON.stringify(transfer.noteToSelf))
+    this._notesToSelf[transfer.id] = JSON.parse(JSON.stringify(transfer.noteToSelf || {}))
 
     debug('sending', dropAmount.toString(), 'to', localAddress,
       'condition', transfer.executionCondition)
