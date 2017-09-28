@@ -73,7 +73,6 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     })
 
     this._api.connection.on('transaction', (ev) => {
-      console.log('\x1b[31mNOTIFY:\x1b[39m', ev)
       if (!ev.validated) return
       if (ev.engine_result !== 'tesSUCCESS') return
 
