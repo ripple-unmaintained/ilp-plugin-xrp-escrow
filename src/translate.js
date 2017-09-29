@@ -91,7 +91,7 @@ function escrowCancelToTransfer (plugin, event) {
 function paymentToMessage (plugin, event) {
   const transaction = event.transaction
   const memos = parseMemos(transaction.Memos)
-  const messageData = memos[MESSAGE_REL]
+  const messageData = memos[MESSAGE_REL] || Buffer.from('{}')
 
   return {
     data: JSON.parse(messageData.toString('utf8')),
