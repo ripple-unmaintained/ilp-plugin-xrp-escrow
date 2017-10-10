@@ -66,6 +66,8 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
   }
 
   async connect () {
+    if (this._connected) return
+
     debug('connecting to api')
     await this._api.connect()
     debug('subscribing to account notifications for', this._address)
