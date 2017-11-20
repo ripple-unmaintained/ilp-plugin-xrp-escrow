@@ -81,6 +81,10 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     ])
   }
 
+  async registerRequestHandler (handler) {
+    this._requestHandler = handler
+  }
+
   async _handleSendMessage (message) {
     const messageId = message.id
     const pendingRequest = this._pendingRequests[messageId]
