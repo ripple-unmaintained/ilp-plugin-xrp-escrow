@@ -7,6 +7,7 @@ const EventEmitter2 = require('eventemitter2')
 const BigNumber = require('bignumber.js')
 const assert = require('assert')
 const crypto = require('crypto')
+const defaultMessageTimeout = 5000
 
 const HttpRpc = require('./rpc')
 const Translate = require('./translate')
@@ -26,6 +27,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._submitted = {}
     this._notesToSelf = {}
     this._fulfillments = {}
+    this._pendingRequests = {}
     this._rpcUris = opts.rpcUris || {}
 
     this.transferQueue = Promise.resolve()
@@ -58,11 +60,62 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this.receive = co.wrap(this._rpc._receive).bind(this._rpc)
   }
 
-  // used when peer has enabled rpc
+  async sendRequest (message) {
+    const requestId = message.id || uuid()
+    const responded = new Promise((resolve, reject) => {
+      this._pendingRequests[requestId] = {resolve, reject}
+      this.sendMessage(Object.assign({id: requestId}, message)).catch((err) => {
+        delete this._pendingRequests[requestId]
+        reject(err)
+      })
+    })
+
+    await this.emitAsync('outgoing_request', message)
+    return await Promise.race([
+      responded,
+      wait(message.timeout || defaultMessageTimeout)
+        .then(() => {
+          delete this._pendingRequests[requestId]
+          throw new Error('sendRequest timed out')
+        })
+    ])
+  }
+
   async _handleSendMessage (message) {
-    // TODO: validate message
-    this.emitAsync('incoming_message', message)
-    return true
+    const messageId = message.id
+    const pendingRequest = this._pendingRequests[messageId]
+    // `message` is a ResponseMessage
+    if (pendingRequest) {
+      delete this._pendingRequests[messageId]
+      await this.emitAsync('incoming_response', message)
+      pendingRequest.resolve(message)
+      return
+    }
+    // `message` is a RequestMessage
+    await this.emitAsync('incoming_request', message)
+    if (!this._requestHandler) return
+    const responseMessage = await this._requestHandler(message).then((responseMessage) => {
+      if (!responseMessage) {
+        throw new Error('No matching handler for request')
+      }
+      return responseMessage
+    }).catch((err) => {
+      return {
+        ledger: message.ledger,
+        from: message.to,
+        to: message.from,
+        ilp: IlpPacket.serializeIlpError({
+          code: 'F00',
+          name: 'Bad Request',
+          triggeredBy: this.getAccount(),
+          forwardedBy: [],
+          triggeredAt: new Date(),
+          data: JSON.stringify({message: err.message})
+        }).toString('base64')
+      }
+    })
+    await this.emitAsync('outgoing_response', responseMessage)
+    return await this._sendMessage(Object.assign({id: messageId}, responseMessage))
   }
 
   async connect () {
@@ -322,6 +375,9 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       memos: [{
         type: 'https://interledger.org/rel/xrpMessage',
         data: JSON.stringify(message.data)
+      }, {
+        type: 'https://interledger.org/rel/xrpMessageId',
+        data: message.id || uuid()
       }]
     })
 
@@ -385,6 +441,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       this._transfers[transfer.id].Done = true
     } else if (transaction.TransactionType === 'Payment') {
       const message = Translate.paymentToMessage(this, ev)
+      this._handleSendMessage(message)
       this.emitAsync(message.direction + '_message', message)
     }
   }
