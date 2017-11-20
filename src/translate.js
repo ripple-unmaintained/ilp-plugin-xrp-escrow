@@ -1,9 +1,11 @@
 'use strict'
+const uuid = require('uuid')
 const Condition = require('./condition')
 
 const ID_REL = 'https://interledger.org/rel/xrpId'
 const ILP_REL = 'https://interledger.org/rel/xrpIlp'
 const MESSAGE_REL = 'https://interledger.org/rel/xrpMessage'
+const MESSAGE_ID_REL = 'https://interledger.org/rel/xrpMessageId'
 
 function rippleToISO (rippleTime) {
   const timestamp = (rippleTime + 0x386D4380) * 1000
@@ -92,6 +94,7 @@ function paymentToMessage (plugin, event) {
   const transaction = event.transaction
   const memos = parseMemos(transaction.Memos)
   const messageData = memos[MESSAGE_REL] || Buffer.from('{}')
+  const messageId = memos[MESSAGE_ID_REL] || uuid()
 
   return {
     data: JSON.parse(messageData.toString('utf8')),
