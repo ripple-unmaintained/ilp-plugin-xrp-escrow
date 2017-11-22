@@ -246,7 +246,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     this._setupExpiry(transfer.id, transfer.expiresAt)
   }
 
-  async fulfillCondition (transferId, fulfillment) {
+  async fulfillCondition (transferId, fulfillment, fulfillmentData) {
     assert(this._connected, 'plugin must be connected before fulfillCondition')
     debug('preparing to fulfill condition', transferId)
 
@@ -265,7 +265,11 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       owner: cached.Account,
       escrowSequence: cached.Sequence,
       condition: Condition.conditionToRipple(condition),
-      fulfillment: Condition.fulfillmentToRipple(fulfillment)
+      fulfillment: Condition.fulfillmentToRipple(fulfillment),
+      memos: [{
+        type: 'https://interledger.org/rel/xrpFulfillmentData',
+        data: fulfillmentData
+      }]
     })
 
     const signed = this._api.sign(tx.txJSON, this._secret)
@@ -426,10 +430,10 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
       const transfer = Translate.escrowCreateToTransfer(this, ev)
       this.emitAsync(transfer.direction + '_prepare', transfer)
     } else if (transaction.TransactionType === 'EscrowFinish') {
-      const transfer = Translate.escrowFinishToTransfer(this, ev)
+      const { transfer, fulfillmentData } = Translate.escrowFinishToTransfer(this, ev)
       // TODO: clear the cache at some point
       const fulfillment = Condition.rippleToFulfillment(transaction.Fulfillment)
-      this.emitAsync(transfer.direction + '_fulfill', transfer, fulfillment)
+      this.emitAsync(transfer.direction + '_fulfill', transfer, fulfillment, fulfillmentData)
 
       // remove note to self from the note to self cache
       delete this._notesToSelf[transfer.id]
