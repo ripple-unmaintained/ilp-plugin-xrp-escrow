@@ -4,6 +4,7 @@ const Condition = require('./condition')
 
 const ID_REL = 'https://interledger.org/rel/xrpId'
 const ILP_REL = 'https://interledger.org/rel/xrpIlp'
+const FULFILLMENT_DATA_REL = 'https://interledger.org/rel/xrpFulfillmentData'
 const MESSAGE_REL = 'https://interledger.org/rel/xrpMessage'
 const MESSAGE_ID_REL = 'https://interledger.org/rel/xrpMessageId'
 
@@ -83,7 +84,14 @@ function escrowCreateToTransfer (plugin, event) {
 }
 
 function escrowFinishToTransfer (plugin, event) {
-  return escrowToTransfer(plugin, event)
+  let fulfillmentData
+  if (event.transaction.Memos) {
+    const memos = parseMemos(event.transaction.Memos)
+    fulfillmentData = memos[FULFILLMENT_DATA_REL]
+  }
+
+  const transfer = escrowToTransfer(plugin, event)
+  return { transfer, fulfillmentData }
 }
 
 function escrowCancelToTransfer (plugin, event) {
