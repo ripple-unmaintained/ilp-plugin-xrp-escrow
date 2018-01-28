@@ -1,8 +1,7 @@
 # ILP Plugin XRP Escrow
 > ILP ledger plugin using the escrow features of ripple
 
-**NOTE**: This plugin is under development, and should not yet be used
-with funds of over ~ 0.01 USD in value.
+**NOTE**: This plugin is deprecated. Instead, use [ILP Plugin XRP paychan](https://github.com/ripple/ilp-plugin-xrp-paychan) for symmetric relationships (where both parties keep state about payment channels to one another). Use [ILP Plugin XRP Asym Server](https://github.com/interledgerjs/ilp-plugin-xrp-asym-server) and [ILP Plugin XRP Asym Client](https://github.com/interledgerjs/ilp-plugin-xrp-asym-client) for asymmetric relationships (where one party accepts many payment channels and one party acts as a client with no persistent state).
 
 ## Step 1: create a hot wallet.
 
