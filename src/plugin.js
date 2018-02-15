@@ -37,15 +37,7 @@ module.exports = class PluginXrpEscrow extends EventEmitter2 {
     }
 
     const keys = keypairs.deriveKeypair(this._secret)
-    const address = keypairs.deriveAddress(keys.publicKey)
-    this._address = opts.address || address
-
-    if (address !== this._address) {
-      throw new Errors.InvalidFieldsError(
-        'opts.address does not correspond to opts.secret.' +
-        ' address=' + address +
-        ' opts=' + JSON.stringify(opts))
-    }
+    this._address = opts.address || keypairs.deriveAddress(keys.publicKey)
 
     if (!this._server) {
       throw new Errors.InvalidFieldsError('missing opts.server')
